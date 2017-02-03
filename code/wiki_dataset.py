@@ -12,7 +12,7 @@ import tempfile
 import re
 import codecs
 
-def get_wiki_dataset(dump):
+def get_wiki_dataset(dump,max=-1):
     """
     Gets sequence dataset of wikipedia dump. Retrieved from here: https://dumps.wikimedia.org/backup-index.html
     Will download the dataset, extract the content using WikiExtractor(https://github.com/attardi/wikiextractor) to extract content from dump
@@ -24,10 +24,10 @@ def get_wiki_dataset(dump):
     :return: seq, voc
     """
     full_url = 'https://dumps.wikimedia.org/' + dump
-    return _retrieve_dataset(full_url)
+    return _retrieve_dataset(full_url,max)
 
 
-def _retrieve_dataset(url):
+def _retrieve_dataset(url, max=-1):
     """
     Saves a wiki dump in numpy format with two lists:
     List of integers, representing the sequence of words in the dump
@@ -50,7 +50,7 @@ def _retrieve_dataset(url):
         extract_dump(dump_sym, extract_dir, quiet=True)
 
         print "Building vocabulary and sequence array.."
-        seq,voc = _build_dataset(extract_dir, path)
+        seq,voc = _build_dataset(extract_dir, path,max)
 
         # clean up temp file:
         print "Removing dump"
@@ -59,17 +59,21 @@ def _retrieve_dataset(url):
         return seq, voc
 
     def loader(path):
-        with open(path, 'rb') as io:
+        with open(path) as io:
             data = np.load(io)
-        return data['seq'],data['voc']
+            return data['seq'],data['voc']
+
 
 
     root = download.get_dataset_directory('svoss/chainer/wiki')
-    path = os.path.join(root, hashlib.md5(url).hexdigest()+".npz")
+    path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d" % max)+".npz")
+    print path
     return download.cache_or_load_file(path, creator, loader)
 
-def _build_dataset(extract_dir, target_path):
+def _build_dataset(extract_dir, target_path, max):
+    print max
     seq = []
+    count = 0
     words = {}# word => index, for fast index retrieval
     word_list = []
     last_index = 0
@@ -88,12 +92,19 @@ def _build_dataset(extract_dir, target_path):
                                     words[token] = last_index
                                     word_list.append(token)
                                     last_index += 1
+                                count += 1
                                 seq.append(words[token])
+                        if count > max and max > -1:
+                            break
+            if count > max and max > -1:
+                break
+        if count > max and max > -1:
+            break
 
     seq = np.array(seq, dtype=np.uint32)
     words = np.array(word_list, dtype=np.dtype('str'))
     with open(target_path,'w') as io:
-        np.savez(io, seq=seq, words=words)
+        np.savez(io, seq=seq, voc=words)
     return seq, words
 
 
@@ -178,5 +189,5 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
 
 
 if __name__ == '__main__':
-     seq,voc = get_wiki_dataset('nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2')
+     seq,voc = get_wiki_dataset('nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2',25000)
      print len(seq), len(voc)
