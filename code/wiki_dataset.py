@@ -6,35 +6,58 @@ import hashlib
 import fileinput
 from chainer.dataset import download
 import shutil
-sys.path.append("../wikiextractor/")
-from WikiExtractor import Extractor, minFileSize, ignoreTag, load_templates, pages_from,process_dump,cpu_count,filter_disambig_pages
 import tempfile
 import re
 import codecs
+import requests
+import zipfile
 
-def get_wiki_dataset(dump,max=-1):
+ROOT = os.path.dirname(os.path.dirname(os.path.join(os.getcwd(),__file__)))
+GITHUB_ZIP = "https://github.com/attardi/wikiextractor/archive/master.zip"
+
+
+def install_wiki_extractor():
+    # if wikiextractor folder does not exist
+    wiki_extractor_path = os.path.join(ROOT, 'wikiextractor')
+    if not os.path.isdir(wiki_extractor_path):
+        # download zip from repo
+        print "Downloading wiki extractor"
+        r = requests.get(GITHUB_ZIP)
+        zip_path = os.path.join(ROOT, 'wikiextractor.zip')
+        with open(zip_path, "wb") as code:
+            code.write(r.content)
+
+        # extract zip from zip
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(ROOT)
+
+        # by default the zip is extract to ROOT/wikiextractor-master we move this to the ROOT/wikiextractor path
+        shutil.move(os.path.join(ROOT, 'wikiextractor-master'), wiki_extractor_path)
+
+        # remove zip file
+        os.remove(zip_path)
+        # append to path
+    sys.path.append(wiki_extractor_path)
+
+
+install_wiki_extractor()
+from WikiExtractor import Extractor, minFileSize, ignoreTag, load_templates, pages_from,process_dump,cpu_count,filter_disambig_pages
+#very ugly hack, to make discardElements global work
+import __builtin__
+__builtin__.discardElements = []
+
+
+def get_wiki_dataset(url, max=-1):
     """
     Gets sequence dataset of wikipedia dump. Retrieved from here: https://dumps.wikimedia.org/backup-index.html
-    Will download the dataset, extract the content using WikiExtractor(https://github.com/attardi/wikiextractor) to extract content from dump
+    Will download the dataset, extract the content using WikiExtractor(https://github.com/attardi/wikiextractor-2) to extract content from dump
     Next it will tokenize text and build a sequence array: a list of integers that represent word sequences and a vocabulary
     where the index of each element will be the integer used in the sequence of that word in the seq array
     Dataset is not shuffled and order of sentences will be respected on an article basis, "." will be replaces by <eos> tokens
 
-    :param: dump link to the dump on wikipedia
+    :param: url link to the dump on wikipedia
+    :param: Limit number of tokens in sequence
     :return: seq, voc
-    """
-    full_url = 'https://dumps.wikimedia.org/' + dump
-    return _retrieve_dataset(full_url,max)
-
-
-def _retrieve_dataset(url, max=-1):
-    """
-    Saves a wiki dump in numpy format with two lists:
-    List of integers, representing the sequence of words in the dump
-    List of strings (vocabulary) where the ith element correspond to the integers in the first list
-    Under the hood the software will cache in npz format
-    :param url:
-    :return:
     """
 
     def creator(path):
@@ -67,7 +90,6 @@ def _retrieve_dataset(url, max=-1):
 
     root = download.get_dataset_directory('svoss/chainer/wiki')
     path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d" % max)+".npz")
-    print path
     return download.cache_or_load_file(path, creator, loader)
 
 def _build_dataset(extract_dir, target_path, max):
@@ -113,9 +135,23 @@ def _build_dataset(extract_dir, target_path, max):
 def extract_dump(input, output=None, bytes="1M", compress=False, html=False, links=False, sections=False, lists=False,
                  namespaces=False, templates=False, no_templates=True, revision=False,
                  min_text_length=Extractor.min_text_length, arg_filter_disambig_pages=False, processes=False, quiet=False,
-                 debug=False, article=False, version=""):
+                 debug=False, article=False, version="",discard_elements=False):
     global urlbase, acceptedNamespaces, filter_disambig_pages
     global templateCache
+    global discardElements
+
+    if discard_elements:
+        discardElements = set(discard_elements.split(','))
+    else:
+        discardElements = [
+            'gallery', 'timeline', 'noinclude', 'pre',
+            'table', 'tr', 'td', 'th', 'caption', 'div',
+            'form', 'input', 'select', 'option', 'textarea',
+            'ul', 'li', 'ol', 'dl', 'dt', 'dd', 'menu', 'dir',
+            'ref', 'references', 'img', 'imagemap', 'source', 'small',
+            'sub', 'sup', 'indicator'
+        ]
+
 
     default_process_count = cpu_count() - 1
     if processes is False:
@@ -189,5 +225,6 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
 
 
 if __name__ == '__main__':
+
      seq,voc = get_wiki_dataset('nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2',25000)
      print len(seq), len(voc)
