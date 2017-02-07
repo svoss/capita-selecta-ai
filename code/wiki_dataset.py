@@ -56,7 +56,7 @@ def get_wiki_dataset(url, max=-1):
     Dataset is not shuffled and order of sentences will be respected on an article basis, "." will be replaces by <eos> tokens
 
     :param: url link to the dump on wikipedia
-    :param: Limit number of tokens in sequence
+    :param: Limit number of tokens in s
     :return: seq, voc
     """
 
