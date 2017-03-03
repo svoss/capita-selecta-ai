@@ -6,3 +6,9 @@ notebooks/result/
 code/~/
 wikiextractor/
 *.pyc
+config.ini
+result*
+*.out
+output.txt
+output2.txt
+test.txt

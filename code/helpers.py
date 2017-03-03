@@ -1,18 +1,22 @@
 from wiki_dataset import get_wiki_dataset
 import numpy as np
 import chainer
-from chainer import training
-from chainer.training import extensions
+from chainer import training, reporter
+import sys
+from chainer.training import extension
 import chainer.links as L
 
+import chainer.serializer as serializer_module
+import chainer.training.trigger as trigger_module
 
-def retrieve_and_split(dump):
+
+def retrieve_and_split(dump, max_sequence_size=250000,word_th=5):
     """
     From a wikidump file will create a test, validation and training set
     :param dump: full path to file
     :return:
     """
-    seq, voc = get_wiki_dataset(dump)
+    seq, voc = get_wiki_dataset(dump, max_sequence_size,word_th)
     seq = seq.astype(np.int32)
 
     val_start = int(len(seq) * .9)
@@ -22,6 +26,8 @@ def retrieve_and_split(dump):
     val = seq[val_start:]
 
     return train, val, test, voc
+
+
 
 
 # Dataset iterator to create a batch of sequences at different positions.
@@ -127,3 +133,23 @@ def compute_perplexity(result):
     result['perplexity'] = np.exp(result['main/loss'])
     if 'validation/main/loss' in result:
         result['val_perplexity'] = np.exp(result['validation/main/loss'])
+
+
+def seconds_to_str(t):
+    """
+    Convert seconds to nicely formatted string
+    :param t:
+    :return:
+    """
+    ""
+    return "%d:%02d:%02d.%03d" % \
+        reduce(lambda ll,b : divmod(ll[0],b) + ll[1:],
+            [(t*1000,),1000,60,60])
+
+def get_config():
+    import os
+    import ConfigParser
+    config = ConfigParser.RawConfigParser()
+    config.read(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.ini'))
+
+    return config

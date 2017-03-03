@@ -11,6 +11,7 @@ import re
 import codecs
 import requests
 import zipfile
+from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.join(os.getcwd(),__file__)))
 GITHUB_ZIP = "https://github.com/attardi/wikiextractor/archive/master.zip"
@@ -47,7 +48,7 @@ import __builtin__
 __builtin__.discardElements = []
 
 
-def get_wiki_dataset(url, max=-1):
+def get_wiki_dataset(url, max=-1, th=5):
     """
     Gets sequence dataset of wikipedia dump. Retrieved from here: https://dumps.wikimedia.org/backup-index.html
     Will download the dataset, extract the content using WikiExtractor(https://github.com/attardi/wikiextractor-2) to extract content from dump
@@ -73,7 +74,7 @@ def get_wiki_dataset(url, max=-1):
         extract_dump(dump_sym, extract_dir, quiet=True)
 
         print "Building vocabulary and sequence array.."
-        seq,voc = _build_dataset(extract_dir, path,max)
+        seq,voc = _build_dataset(extract_dir, path,max,th)
 
         # clean up temp file:
         print "Removing dump"
@@ -89,11 +90,40 @@ def get_wiki_dataset(url, max=-1):
 
 
     root = download.get_dataset_directory('svoss/chainer/wiki')
-    path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d" % max)+".npz")
+    path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d_%d" % (max,th))+".npz")
     return download.cache_or_load_file(path, creator, loader)
 
-def _build_dataset(extract_dir, target_path, max):
-    print max
+
+def _filter_with_th(seq, words, th):
+    """
+    If a certain word occurs less then threshold times, it will be filtered out of the sequence and batched into one
+    container word
+    :param seq:
+    :param words:
+    :param th:
+    :return:
+    """
+    count = Counter(seq)
+    #all above threshold ignore
+    if min(count.values()) >= th:
+        return seq,words
+
+    new_words_index = 1
+    new_words = ['<below_th>']
+    words_transition = {}
+    for w,c in count.iteritems():
+        if c < th:
+            words_transition[w] = 0
+        else:
+            words_transition[w] = new_words_index
+            new_words.append(words[w])
+            new_words_index += 1
+
+    seq = np.array([words_transition[s] for s in seq])
+
+    return seq, new_words
+
+def _build_dataset(extract_dir, target_path, max,th=5):
     seq = []
     count = 0
     words = {}# word => index, for fast index retrieval
@@ -108,7 +138,7 @@ def _build_dataset(extract_dir, target_path, max):
                         # This regex matches <doc>  and </doc> tags in the generated files, which should be ignored
                         if re.match(r"\<\/?doc(.*)\>",line) is None:
                             # removes <br> and replace . with <eos>
-                            line = line.replace("<br>"," ").replace("."," <eos>")
+                            line = line.replace("<br>"," ").replace(". "," <eos> ")
                             for token in re.findall("[\w\<\>]+",line):
                                 if token not in words:
                                     words[token] = last_index
@@ -123,8 +153,10 @@ def _build_dataset(extract_dir, target_path, max):
         if count > max and max > -1:
             break
 
+
+    seq, words = _filter_with_th(seq, word_list, th)
     seq = np.array(seq, dtype=np.uint32)
-    words = np.array(word_list, dtype=np.dtype('str'))
+    words = np.array(words, dtype=np.dtype('str'))
     with open(target_path,'w') as io:
         np.savez(io, seq=seq, voc=words)
     return seq, words
@@ -226,5 +258,8 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
 
 if __name__ == '__main__':
 
-     seq,voc = get_wiki_dataset('nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2',25000)
+     seq,voc = get_wiki_dataset('https://dumps.wikimedia.org/nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2',250001,5)
      print len(seq), len(voc)
+     #seq = [0,0,0,1,2,3,4,4,5,5,5]
+     #words = {0:'a',1:'b',2:'c',3:'d',4:'e',5:'f'}
+     #print _filter_with_th(seq, words, 3)
