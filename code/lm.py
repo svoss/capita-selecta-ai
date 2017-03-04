@@ -46,6 +46,7 @@ def train(dump, name, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='res
     com.add_text("Batch size", batch_size)
     com.add_text("Output folder", out)
     com.add_text("Start date", time.strftime("%c"))
+    com.add_text("Voc size", "%d" % n_vocab)
 
 
     train_iter = ParallelSequentialIterator(train, batch_size)
