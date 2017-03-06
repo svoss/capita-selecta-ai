@@ -90,7 +90,7 @@ def get_wiki_dataset(url, max=-1, th=5):
 
 
     root = download.get_dataset_directory('svoss/chainer/wiki')
-    path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d_%d" % (max,th))+".npz")
+    path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d-%d" % (max,th))+".npz")
     return download.cache_or_load_file(path, creator, loader)
 
 
@@ -123,6 +123,11 @@ def _filter_with_th(seq, words, th):
 
     return seq, new_words
 
+def tokenize(line):
+    line = line.replace("<br>", " ").replace(". ", " <eos> ").lower()
+    for token in re.findall("[\w\<\>]+", line):
+        yield token
+
 def _build_dataset(extract_dir, target_path, max,th=5):
     seq = []
     count = 0
@@ -138,8 +143,7 @@ def _build_dataset(extract_dir, target_path, max,th=5):
                         # This regex matches <doc>  and </doc> tags in the generated files, which should be ignored
                         if re.match(r"\<\/?doc(.*)\>",line) is None:
                             # removes <br> and replace . with <eos>
-                            line = line.replace("<br>"," ").replace(". "," <eos> ")
-                            for token in re.findall("[\w\<\>]+",line):
+                            for token in tokenize(line):
                                 if token not in words:
                                     words[token] = last_index
                                     word_list.append(token)

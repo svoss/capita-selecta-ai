@@ -47,8 +47,9 @@ def read_dataset(file):
     :return:
     """
     np.load(file)
-    seq,voc = np.load(file)
-    seq =  seq.astype(np.int32)
+    data = np.load(file)
+    seq,voc = data['seq'],data['voc']
+    seq = seq.astype(np.int32)
     return seq,voc
 
 
