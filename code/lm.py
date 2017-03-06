@@ -130,7 +130,7 @@ def main():
     parser.add_argument('--grad-clip', default=True, help="Clip gradients")
     parser.add_argument('--brpoplen', type=int, default=35)
     parser.add_argument('--resume', default='')
-    parser.add_argument('--max-seq-size', default=250000,type=int)
+    parser.add_argument('--max-seq-size', default=250000, type=int)
     args = parser.parse_args()
     com = Communication(args.out)
     com.add_text("Type", "language model")

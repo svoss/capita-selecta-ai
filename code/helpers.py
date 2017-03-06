@@ -28,6 +28,46 @@ def retrieve_and_split(dump, max_sequence_size=250000,word_th=5):
     return train, val, test, voc
 
 
+def export_dataset(dump, to_file, max_sequence_size=250000,word_th=5):
+    """ Export dataset, can be usefull if you want to use the same dataset in other environment
+    :param dump:
+    :param to_file:
+    :param max_sequence_size:
+    :param word_th:
+    :return:
+    """
+    seq, voc = get_wiki_dataset(dump, max_sequence_size, word_th)
+    np.savez(to_file, seq=seq, voc=voc)
+
+
+def read_dataset(file):
+    """
+    Reads dataset that was exported by export_dataset
+    :param file:
+    :return:
+    """
+    np.load(file)
+    seq,voc = np.load(file)
+    seq =  seq.astype(np.int32)
+    return seq,voc
+
+
+def retrieve_and_split(dump, max_sequence_size=250000,word_th=5):
+    """
+    From a wikidump file will create a test, validation and training set
+    :param dump: full path to file
+    :return:
+    """
+    seq, voc = get_wiki_dataset(dump, max_sequence_size,word_th)
+    seq = seq.astype(np.int32)
+
+    val_start = int(len(seq) * .9)
+    test_start = int(val_start * .9)
+    train = seq[:test_start]
+    test = seq[test_start:val_start]
+    val = seq[val_start:]
+
+    return train, val, test, voc
 
 
 # Dataset iterator to create a batch of sequences at different positions.

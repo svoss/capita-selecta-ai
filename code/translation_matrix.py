@@ -20,9 +20,10 @@ from communication import Communication
 from optimizer import LayerFreezing
 import os
 import sys
+import numpy as np
+from chainer import cuda
 
-
-def _load_dataset(com, flow_dump,fit_dump,max_seq_size):
+def _load_dataset(com,fit_dump,flow_dump,max_seq_size):
 
     com.add_text("Fit wiki dump", fit_dump)
     com.add_text("Flow wiki dump", flow_dump)
@@ -103,6 +104,54 @@ def evaluate(com, eval_rnn, test_iter, eval_model, gpu, name="Final loss"):
     com.add_text(name, result['main/loss'])
 
 
+def run_training(com, eval_model, eval_rnn, model, grad_clip, train_iter, brpoplen,gpu,epoch,out,val_iter,test_mode,resume):
+
+
+    # Set up an optimizer
+    optimizer = chainer.optimizers.SGD(lr=.25)
+    optimizer.setup(model)
+    optimizer.add_hook(chainer.optimizer.GradientClipping(grad_clip))
+
+    # ignore training of certain layers
+    optimizer.add_hook(LayerFreezing(['embed', 'l1', 'l2']))
+
+    # Set up a trainer
+    updater = BPTTUpdater(train_iter, optimizer, brpoplen, gpu)
+    trainer = training.Trainer(updater, (epoch, 'epoch'), out=out)
+
+    trainer.extend(extensions.Evaluator(
+        val_iter, eval_model, device=gpu,
+        # Reset the RNN state at the beginning of each evaluation
+        eval_hook=lambda _: eval_rnn.reset_state()))
+
+    interval = 10 if test_mode else 500
+
+    trainer.extend(extensions.ExponentialShift('lr', 0.5),
+                   trigger=(15, 'epoch'))
+    trainer.extend(extensions.LogReport(postprocess=compute_perplexity,
+                                        trigger=(interval, 'iteration')))
+    trainer.extend(extensions.PrintReport(
+        ['epoch', 'iteration', 'perplexity', 'val_perplexity']
+    ), trigger=(interval, 'iteration'))
+    trainer.extend(extensions.ProgressBar(
+        update_interval=10 if test_mode else 125))
+    trainer.extend(extensions.snapshot())
+    trainer.extend(extensions.snapshot_object(
+        model, 'model_iter_{.updater.iteration}'))
+    if resume:
+        chainer.serializers.load_npz(resume, trainer)
+    date = time.strftime("%Y-%m-%d_%H-%M-%S")
+    fn_a = 'loss_%s.png' % date
+    loss_r = extensions.PlotReport(['validation/main/loss', 'main/loss'], 'epoch', file_name=fn_a)
+
+    trainer.extend(loss_r)
+
+    trainer.run()
+
+    com.add_image(os.path.join(out, fn_a), "loss")
+
+
+
 def check_loss(com,lm, dump, gpu=-1, batch_size=128, max_seq_size=250000, test_mode=True):
     """
     Checks loss on tet set of the translation model build by using the same fit and flow model, without any training this
@@ -149,6 +198,40 @@ def check_loss(com,lm, dump, gpu=-1, batch_size=128, max_seq_size=250000, test_m
     evaluate(com, eval_rnn, test_iter, eval_model, gpu, "Translation model")
 
 
+def check_weights_update(com, lm_fit, lm_flow, fit_dump, flow_dump, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='result', grad_clip=True, brpoplen=35, resume='', max_seq_size=250000):
+    """ This method checks if my optimizer indeed doesn't update the weights of my modle
+    :return:
+    """
+    train, val, test, voc, n_vocab_fit, n_vocab_flow = _load_dataset(com, fit_dump, flow_dump, max_seq_size)
+    trnn = _build_trans_model(com, lm_fit, lm_flow,n_vocab_fit,n_vocab_flow)
+    train_iter, test_iter, val_iter = _dataset_iterator(com, train, test , val, batch_size, test_mode)
+
+
+    model = _build_model(trnn, gpu)
+
+    before = {}
+
+    print("Before")
+    for name, params in model.namedparams():
+        # might only work with gpu:
+        before[name] = np.array(params.data.get(), dtype=np.float32)
+        print(name, np.sum(before[name]))
+
+    # Evaluation copy
+    eval_model = _get_evaluator(model)
+    eval_rnn = eval_model.predictor
+
+    #
+    run_training(com, eval_model, eval_rnn, model, grad_clip, train_iter, brpoplen, gpu, epoch, out, val_iter, test_mode, resume)
+
+    print("After...")
+    for name, params in model.namedparams():
+        # might only work with gpu:
+        after = np.array(params.data.get(), dtype=np.float32)
+        diff = np.subtract(after,before[name])
+        print(name, np.sum(diff))
+
+
 def train(com, lm_fit, lm_flow, fit_dump, flow_dump, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='result', grad_clip=True, brpoplen=35, resume='', max_seq_size=250000):
     """
 
@@ -157,56 +240,18 @@ def train(com, lm_fit, lm_flow, fit_dump, flow_dump, test_mode=False, epoch=5, b
     com.add_text("Task", "training")
     com.add_text("Output folder", out)
     train, val, test, voc, n_vocab_fit, n_vocab_flow = _load_dataset(com, fit_dump, flow_dump, max_seq_size)
-    trnn = _build_trans_model(com, lm_fit, lm_flow,n_vocab_fit,n_vocab_fit)
+    trnn = _build_trans_model(com, lm_fit, lm_flow,n_vocab_fit,n_vocab_flow)
     train_iter, test_iter, val_iter = _dataset_iterator(com, train, test , val, batch_size, test_mode)
 
-    print("Init model complete")
+
     model = _build_model(trnn, gpu)
 
     # Evaluation copy
     eval_model = _get_evaluator(model)
     eval_rnn = eval_model.predictor
 
-    # Set up an optimizer
-    optimizer = chainer.optimizers.SGD(lr=1.0)
-    optimizer.setup(model)
-    optimizer.add_hook(chainer.optimizer.GradientClipping(grad_clip))
-    optimizer.add_hook(LayerFreezing([]))
+    run_training(com, eval_model, eval_rnn, model, grad_clip, train_iter, brpoplen, gpu, epoch, out, val_iter, test_mode, resume)
 
-    # Set up a trainer
-    updater = BPTTUpdater(train_iter, optimizer, brpoplen, gpu)
-    trainer = training.Trainer(updater, (epoch, 'epoch'), out=out)
-
-    trainer.extend(extensions.Evaluator(
-        val_iter, eval_model, device=gpu,
-        # Reset the RNN state at the beginning of each evaluation
-        eval_hook=lambda _: eval_rnn.reset_state()))
-
-    interval = 10 if test_mode else 500
-
-    trainer.extend(extensions.ExponentialShift('lr', 0.5),
-                   trigger=(25, 'epoch'))
-    trainer.extend(extensions.LogReport(postprocess=compute_perplexity,
-                                        trigger=(interval, 'iteration')))
-    trainer.extend(extensions.PrintReport(
-        ['epoch', 'iteration', 'perplexity', 'val_perplexity']
-    ), trigger=(interval, 'iteration'))
-    trainer.extend(extensions.ProgressBar(
-        update_interval=10 if test_mode else 125))
-    trainer.extend(extensions.snapshot())
-    trainer.extend(extensions.snapshot_object(
-        model, 'model_iter_{.updater.iteration}'))
-    if resume:
-        chainer.serializers.load_npz(resume, trainer)
-    date = time.strftime("%Y-%m-%d_%H-%M-%S")
-    fn_a = 'loss_%s.png' % date
-    loss_r = extensions.PlotReport(['validation/main/loss','main/loss'],'epoch',file_name=fn_a)
-
-    trainer.extend(loss_r)
-
-    trainer.run()
-
-    com.add_image(os.path.join(out, fn_a),"loss")
 
     # Evaluate the final model
     evaluate(com, eval_rnn, test_iter, eval_model, gpu)
@@ -241,7 +286,7 @@ def main():
     train(com, args.lm_fit, args.lm_flow,args.fit_dump,args.flow_dump, args.test_mode, args.epochs, args.batch_size, args.gpu, args.out, args.grad_clip, args.brpoplen, args.resume, args.max_seq_size)
     diff = time.time() - start
     com.add_text('time',seconds_to_str(diff))
-    #com.send_slack(config.get('slack','channel'),config.get('slack','api_token'))
+    com.send_slack(config.get('slack','channel'),config.get('slack','api_token'))
 
 
 
