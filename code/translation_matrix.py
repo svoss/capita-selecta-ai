@@ -108,7 +108,7 @@ def run_training(com, eval_model, eval_rnn, model, grad_clip, train_iter, brpopl
 
 
     # Set up an optimizer
-    optimizer = chainer.optimizers.SGD(lr=.25)
+    optimizer = chainer.optimizers.SGD(lr=.5)
     optimizer.setup(model)
     optimizer.add_hook(chainer.optimizer.GradientClipping(grad_clip))
 
@@ -124,9 +124,9 @@ def run_training(com, eval_model, eval_rnn, model, grad_clip, train_iter, brpopl
         # Reset the RNN state at the beginning of each evaluation
         eval_hook=lambda _: eval_rnn.reset_state()))
 
-    interval = 10 if test_mode else 500
+    interval = 10 if test_mode else 1000
 
-    trainer.extend(extensions.ExponentialShift('lr', 0.5),
+    trainer.extend(extensions.ExponentialShift('lr', 0.25),
                    trigger=(15, 'epoch'))
     trainer.extend(extensions.LogReport(postprocess=compute_perplexity,
                                         trigger=(interval, 'iteration')))
