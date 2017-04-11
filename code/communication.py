@@ -42,6 +42,7 @@ class Communication(object):
         slack = Slacker(api_token)
         text = self.get_text()
         for f, name in self.images:
+
             slack.files.upload(f, channels=channel, title=name)
         for f, name in self.files:
             slack.files.upload(f, channels=channel, title=name)

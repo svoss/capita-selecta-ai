@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import os
 import sys
 import numpy as np
@@ -91,6 +93,7 @@ def get_wiki_dataset(url, max=-1, th=5):
 
     root = download.get_dataset_directory('svoss/chainer/wiki')
     path = os.path.join(root, hashlib.md5(url).hexdigest()+("_%d-%d" % (max,th))+".npz")
+
     return download.cache_or_load_file(path, creator, loader)
 
 
@@ -125,7 +128,7 @@ def _filter_with_th(seq, words, th):
 
 def tokenize(line):
     line = line.replace("<br>", " ").replace(". ", " <eos> ").lower()
-    for token in re.findall("[\w\<\>]+", line):
+    for token in re.findall("[\w\<\>]+", line, re.UNICODE):
         yield token
 
 def _build_dataset(extract_dir, target_path, max,th=5):
@@ -160,7 +163,7 @@ def _build_dataset(extract_dir, target_path, max,th=5):
 
     seq, words = _filter_with_th(seq, word_list, th)
     seq = np.array(seq, dtype=np.uint32)
-    words = np.array(words, dtype=np.dtype('str'))
+    words = np.array(words, dtype=np.dtype(unicode))
     with open(target_path,'w') as io:
         np.savez(io, seq=seq, voc=words)
     return seq, words
@@ -261,9 +264,11 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
 
 
 if __name__ == '__main__':
+     #for token in tokenize(u"La oveja (Ovis orientalis aries)1 es un mamífero cuadrúpedo ungulado doméstico, usado como ganado. Como todos los rumiantes, las ovejas son artiodáctilos, o animales con pezuñas."):
+     #    print token
 
-     seq,voc = get_wiki_dataset('https://dumps.wikimedia.org/nlwiki/20161220/nlwiki-20161220-pages-articles1.xml.bz2',250001,5)
-     print len(seq), len(voc)
+     seq,voc = get_wiki_dataset('https://dumps.wikimedia.org/eswiki/20170120/eswiki-20170120-pages-articles4.xml-p003407510p007744777.bz2',1000001,5)
+     print voc[:100]
      #seq = [0,0,0,1,2,3,4,4,5,5,5]
      #words = {0:'a',1:'b',2:'c',3:'d',4:'e',5:'f'}
      #print _filter_with_th(seq, words, 3)
