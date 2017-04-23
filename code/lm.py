@@ -25,7 +25,7 @@ def train(dump, name, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='res
     """
 
     """
-    train, val, test, voc = retrieve_and_split(dump,max_seq_size)
+    train, val, test, voc = retrieve_and_split(dump,max_seq_size,5)
     n_vocab = len(voc)
     # n_vocab=10
     print("Going to run %s" % name)
@@ -55,7 +55,7 @@ def train(dump, name, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='res
 
     # Prepare an RNNLM model
     print("Creating model")
-    rnn = RNNLM(n_vocab, 800)
+    rnn = RNNLM(n_vocab, 650)
     print("Init model complete")
     model = L.Classifier(rnn)
     model.compute_accuracy = False  # we only want the perplexity
@@ -103,7 +103,7 @@ def train(dump, name, test_mode=False, epoch=5, batch_size=128, gpu=-1, out='res
     trainer.extend(loss_r)
     start = time.time()
     trainer.run()
-
+    print(os.path.exists(os.path.join(out, fn_a)))
     com.add_image(os.path.join(out, fn_a),"loss")
     diff = time.time() - start
     com.add_text('time',seconds_to_str(diff))
@@ -136,7 +136,7 @@ def main():
     com.add_text("Type", "language model")
 
     train(args.dump, args.name, args.test_mode, args.epochs, args.batch_size, args.gpu, args.out, args.grad_clip, args.brpoplen, args.resume, args.max_seq_size,com)
-    com.send_slack(config.get('slack','channel'),config.get('slack','api_token'))
+    com.send_slack(config.get('slack','channel'), config.get('slack','api_token'))
 
 
 
