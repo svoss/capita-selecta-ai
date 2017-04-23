@@ -44,7 +44,7 @@ def install_wiki_extractor():
 
 
 install_wiki_extractor()
-from WikiExtractor import Extractor, minFileSize, ignoreTag, load_templates, pages_from,process_dump,cpu_count,filter_disambig_pages
+from WikiExtractor import options,minFileSize,ignoreTag,Extractor
 #very ugly hack, to make discardElements global work
 import __builtin__
 __builtin__.discardElements = []
@@ -171,14 +171,14 @@ def _build_dataset(extract_dir, target_path, max,th=5):
 
 # function extracts templates from dump, it uses the WikiExtractor module to do so
 # Based on the main() function in WikiExtractor.py, but replaces params
-def extract_dump(input, output=None, bytes="1M", compress=False, html=False, links=False, sections=False, lists=False,
-                 namespaces=False, templates=False, no_templates=True, revision=False,
-                 min_text_length=Extractor.min_text_length, arg_filter_disambig_pages=False, processes=False, quiet=False,
-                 debug=False, article=False, version="",discard_elements=False):
-    global urlbase, acceptedNamespaces, filter_disambig_pages
+def extract_dump(input, output=None, bytes="1M",json=False, compress=False, html=False, links=False, sections=False, lists=False,
+                 namespaces=False, templates=False, no_templates=True, revision=False,ignored_tags=False,
+                 min_text_length=options.min_text_length, filter_disambig_pages=options.filter_disambig_pages, processes=False, quiet=False,
+                 debug=False, article=False, version="",discard_elements=False,keep_tables=False):
+    global urlbase, acceptedNamespaces
     global templateCache
     global discardElements
-
+    from WikiExtractor import options, minFileSize, ignoreTag, Extractor, createLogger, load_templates, pages_from, process_dump
     if discard_elements:
         discardElements = set(discard_elements.split(','))
     else:
@@ -191,22 +191,19 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
             'sub', 'sup', 'indicator'
         ]
 
-
-    default_process_count = cpu_count() - 1
-    if processes is False:
-        processes = default_process_count
-
-    Extractor.keepLinks = links
-    Extractor.keepSections = sections
-    Extractor.keepLists = lists
-    Extractor.toHTML = html
-    Extractor.print_revision = revision
-    Extractor.min_text_length = min_text_length
+    options.keepLinks = links
+    options.keepSections = sections
+    options.keepLists = lists
+    options.toHTML = html
+    options.write_json = json
+    options.print_revision = revision
+    options.min_text_length = min_text_length
     if html:
-        Extractor.keepLinks = True
+        options.keepLinks = True
 
-    Extractor.expand_templates = no_templates
-    filter_disambig_pages = arg_filter_disambig_pages
+    options.expand_templates =  no_templates
+    options.filter_disambig_pages = filter_disambig_pages
+    options.keep_tables = keep_tables
 
     try:
         power = 'kmg'.find(bytes[-1].lower()) + 1
@@ -218,20 +215,37 @@ def extract_dump(input, output=None, bytes="1M", compress=False, html=False, lin
         return
 
     if namespaces:
-        acceptedNamespaces = set(namespaces.split(','))
+        options.acceptedNamespaces = set(namespaces.split(','))
+
+    # ignoredTags and discardElemets have default values already supplied, if passed in the defaults are overwritten
+    if ignored_tags:
+        ignoredTags = set(ignored_tags.split(','))
+    else:
+        ignoredTags = [
+            'abbr', 'b', 'big', 'blockquote', 'center', 'cite', 'em',
+            'font', 'h1', 'h2', 'h3', 'h4', 'hiero', 'i', 'kbd',
+            'p', 'plaintext', 's', 'span', 'strike', 'strong',
+            'tt', 'u', 'var'
+        ]
+
+    # 'a' tag is handled separately
+    for tag in ignoredTags:
+        ignoreTag(tag)
+
+    if discard_elements:
+        options.discardElements = set(discard_elements.split(','))
 
     FORMAT = '%(levelname)s: %(message)s'
     logging.basicConfig(format=FORMAT)
 
-    logger = logging.getLogger()
-    if not quiet:
-        logger.setLevel(logging.INFO)
-    if debug:
-        logger.setLevel(logging.DEBUG)
+    options.quiet = quiet
+    options.debug = debug
+
+    createLogger(options.quiet, options.debug)
 
     input_file = input
 
-    if not Extractor.keepLinks:
+    if not options.keepLinks:
         ignoreTag('a')
 
     # sharing cache of parser templates is too slow:
