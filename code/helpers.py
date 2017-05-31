@@ -8,7 +8,7 @@ import chainer.links as L
 
 import chainer.serializer as serializer_module
 import chainer.training.trigger as trigger_module
-
+import re
 
 def retrieve_and_split(dump, max_sequence_size=250000,word_th=5):
     """
@@ -39,6 +39,11 @@ def export_dataset(dump, to_file, max_sequence_size=250000,word_th=5):
     seq, voc = get_wiki_dataset(dump, max_sequence_size, word_th)
     np.savez(to_file, seq=seq, voc=voc)
 
+
+def tokenize(line):
+    line = line.replace("<br>", " ").replace(". ", " <eos> ").lower()
+    for token in re.findall("[\w\<\>]+", line, re.UNICODE):
+        yield token
 
 def read_dataset(file):
     """

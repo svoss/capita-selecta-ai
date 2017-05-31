@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 """
 This file contains code to analyse trained models
 """
@@ -5,7 +8,7 @@ from operator import itemgetter
 from heapq import nlargest
 from chainer.functions import softmax
 import numpy as np
-
+from helpers import tokenize
 
 # Shared helping functions
 def create_inverse_voc(voc):
@@ -72,5 +75,22 @@ class TextGenerator():
                     text_idx[si, i] = w
 
         return [map_seq_to_sentence(s, self.voc) for s in text_idx]
+
+if __name__ == '__main__':
+    import os
+    from helpers import read_dataset
+    from models import load_rnn_model
+    GERMAN_FOLDER = "result-german/"
+    model_english = os.path.join(GERMAN_FOLDER, '650_u_45_e_1M_v_5_th_model')
+    seq_de, voc_de = read_dataset(os.path.join(GERMAN_FOLDER, 'data.npz'))
+    rnn_de = load_rnn_model(model_english,len(voc_de),650)
+    print("The german vocabulary contains %d different words" % len(voc_de))
+    rnn_de.predictor.train = False
+    gen = TextGenerator(rnn_de.predictor, voc_de)
+
+    seeds = ["Der Nepalhaubenadler (Nisaetus nipalensis, Syn.: Spizaetus nipalensis) ist eine Greifvogelart aus der Familie der Habichtartigen (Accipitridae)","Am 13. Mai hatte Niklas eigentlich mit Stijn nach KissKiss mussen gehen. Das war das letzte Mal, sehr gemütlich. Aber Stijn behauptete, dass Niklas nicht viel Sinn machen."]
+    for sentence in gen.generate_text(seeds):
+        print(sentence.encode('utf8'))
+
 
 
